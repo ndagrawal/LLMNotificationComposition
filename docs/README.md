@@ -9,8 +9,10 @@ This folder contains all research and presentation materials associated with the
 | `LLM_Notification_Composition_ACM_Paper.pdf` | PDF | Full ACM `sigconf`-formatted research paper |
 | `LLM_Notification_Composition_ACM_Paper.tex` | LaTeX | ACM `sigconf` LaTeX source (compile with `pdflatex` + `bibtex`) |
 | `LLM_Notification_Composition_Paper.docx` | Word | Microsoft Word version for editing and annotation |
-| `LLM_Notification_Composition_Slides.pdf` | PDF | Presentation slide deck (19 slides) |
-| `LLM_Notification_Composition_Slides.pptx` | PowerPoint | Editable PPTX version of the slide deck |
+| `LLM_Notification_Composition_Slides.pdf` | PDF | Research paper presentation slide deck (19 slides) |
+| `LLM_Notification_Composition_Slides.pptx` | PowerPoint | Editable PPTX version of the research paper slide deck |
+| `LLM_Notification_Composition_SDK_Slides.pdf` | PDF | SDK & Reference Implementation presentation (6 slides) |
+| `LLM_Notification_Composition_SDK_Slides.pptx` | PowerPoint | Editable PPTX version of the SDK implementation slide deck |
 | `references.bib` | BibTeX | Full bibliography with all 28 references |
 | `figures/` | PNG | High-resolution figures: PRISMA flow, pipeline architecture, domain matrix, evaluation framework |
 
