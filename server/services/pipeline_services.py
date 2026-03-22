@@ -2,13 +2,19 @@
 pipeline_services.py — All pipeline component services.
 
 Implements the seven components from Figure 2 of the paper:
-  1. BudgetRouter       — CLV-based path selection
+  1. BudgetRouter       — CLV-based path selection (v3: binding-constraint check)
   2. ContextRetriever   — RAG-style context assembly
   3. MessageComposer    — LLM candidate generation
   4. GuardrailFilter    — Factuality and policy checks
-  5. RewardRanker       — Pairwise-inspired candidate scoring
+  5. RewardRanker       — Pairwise-inspired candidate scoring (v3: quality dimensions)
   6. FrequencyCapper    — Max-touch enforcement
   7. SendTimeOptimizer  — Thompson Sampling bandit
+
+v3 additions:
+  - MessageQualityEvaluator integrated into reward ranking (six-dimension scoring)
+  - Binding-constraint check in BudgetRouter (three-criterion framework)
+
+Reference: Agrawal (2026), Sections 2 and 12.
 """
 from __future__ import annotations
 import json
@@ -68,13 +74,36 @@ class PipelineContext:
 
 # ── 1. Budget Router ───────────────────────────────────────────────────────────
 
-def route_budget(profile: UserProfileDB, options) -> tuple[CompositionPath, str]:
+def route_budget(
+    profile: UserProfileDB,
+    options,
+    request=None,
+    context_keys: list | None = None,
+) -> tuple[CompositionPath, str]:
     """
     Maps CLV tier to a composition path.
     High-value users receive full LLM pipeline; low-value users receive templates.
-    This implements the cost-benefit framework from Section 6 of the paper.
+
+    v3 update: Applies the three-criterion binding-constraint check before
+    routing to the LLM path. Even platinum-tier users are routed to the
+    template path if the binding-constraint check fails (e.g., order updates).
+
+    Reference: Section 12 of the v3 paper (Binding-Constraint Framework).
     """
     tier = CLVTier(options.override_clv_tier or profile.clv_tier or "bronze")
+
+    # ── v3: Binding-Constraint Check ──────────────────────────────────────────
+    # Before routing to the LLM path, verify that LLM generation is the
+    # binding constraint. If not, template is always preferred regardless of CLV.
+    if request is not None:
+        from services.message_quality import check_binding_constraint
+        bc = check_binding_constraint(request, context_keys)
+        if not bc.use_llm:
+            return CompositionPath.template, (
+                f"CLV={tier.value} but binding-constraint check failed → Template Path. "
+                f"Reason: {bc.reason}"
+            )
+    # ─────────────────────────────────────────────────────────────────────────
 
     if tier == CLVTier.platinum:
         path = CompositionPath.llm_full
@@ -477,53 +506,41 @@ def _heuristic_reward_rank(
     ctx: PipelineContext
 ) -> list[CandidateMessage]:
     """
-    Fast heuristic reward scoring based on:
-    - Title length (optimal: 30–50 chars)
-    - Body length (optimal: 60–120 chars)
-    - Presence of item name (relevance)
-    - Presence of action words (engagement)
-    - Absence of prohibited words (safety)
+    Fast heuristic reward scoring using the six-dimension message quality framework.
+
+    v3 update: Replaces the ad-hoc length/action-word heuristic with the
+    MessageQualityEvaluator, which scores across all six dimensions defined
+    in Section 2 of the v3 paper. The composite quality score becomes the
+    reward score used for ranking.
+
+    Dimensions (weights):
+      - Contextual Relevance (0.25)
+      - Clarity (0.20)
+      - Actionability (0.20)
+      - Novelty Handling (0.10)
+      - Linguistic Freshness (0.15)
+      - Persuasive Appropriateness (0.10)
     """
-    action_words = {"now", "today", "new", "just", "check", "see", "get", "try",
-                    "discover", "explore", "back", "ready", "waiting", "available"}
-    item_words = set(request.content_item.title.lower().split())
-
+    from services.message_quality import MessageQualityEvaluator
+    evaluator = MessageQualityEvaluator()
     for candidate in candidates:
-        score = 0.5  # base
-
-        # Title length score
-        tl = len(candidate.title)
-        if 25 <= tl <= 50:
-            score += 0.15
-        elif tl < 15 or tl > 70:
-            score -= 0.1
-
-        # Body length score
-        bl = len(candidate.body)
-        if 60 <= bl <= 120:
-            score += 0.1
-        elif bl < 30 or bl > 200:
-            score -= 0.05
-
-        # Item name presence
-        title_words = set(candidate.title.lower().split())
-        if title_words & item_words:
-            score += 0.1
-
-        # Action word presence
-        body_words = set(candidate.body.lower().split())
-        if body_words & action_words:
-            score += 0.05
-
-        # Penalise all-caps words (shouting)
-        if re.search(r'\b[A-Z]{4,}\b', candidate.title):
-            score -= 0.1
-
-        # Penalise excessive punctuation
-        if candidate.title.count('!') > 1 or candidate.body.count('!') > 2:
-            score -= 0.05
-
-        candidate.reward_score = round(max(0.0, min(1.0, score)), 3)
+        quality = evaluator.evaluate(
+            title=candidate.title,
+            body=candidate.body,
+            request=request,
+            context_keys=ctx.retrieved_keys,
+        )
+        candidate.reward_score = quality.composite
+        # Attach quality breakdown to generation_strategy field for traceability
+        candidate.generation_strategy = (
+            f"{candidate.generation_strategy}|quality={quality.composite:.3f}"
+            f"|cr={quality.contextual_relevance:.2f}"
+            f"|cl={quality.clarity:.2f}"
+            f"|ac={quality.actionability:.2f}"
+            f"|lf={quality.linguistic_freshness:.2f}"
+        )
+        if quality.flags:
+            candidate.generation_strategy += f"|flags={'|'.join(quality.flags)}"
 
     candidates.sort(key=lambda c: c.reward_score, reverse=True)
     return candidates

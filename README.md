@@ -2,15 +2,60 @@
 
 **LLM-Based Intelligent Notification Composition: From Static Personalization to Context-Aware Persuasive Messaging**
 
+> **v3 (March 2026)** — Significantly revised. Three new contributions: six-dimension message quality framework, architectural attribution, and binding-constraint decision framework. See [What's New in v3](#whats-new-in-v3) below.
+
 > A systematic survey and architectural framework for using Large Language Models to transform push notifications from static, slot-filled templates into context-aware, persuasive, and adaptive messages — with a full reference implementation as an iOS SDK and Python backend server.
 
-[![Paper](https://img.shields.io/badge/Paper-ACM%20Style-red?style=flat-square)](docs/LLM_Notification_Composition_ACM_Paper.pdf)
+[![Paper (arXiv)](https://img.shields.io/badge/Paper-arXiv%20Format-red?style=flat-square)](docs/LLM_Notification_Composition_arXiv.pdf)
 [![Swift](https://img.shields.io/badge/iOS%20SDK-Swift%205.9+-orange?style=flat-square&logo=swift)](NotifyComposeSDK/)
 [![Python](https://img.shields.io/badge/Server-Python%203.11%20FastAPI-blue?style=flat-square&logo=python)](server/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
 **Author:** Nilesh Agrawal · [nilesh.d.agrawal@gmail.com](mailto:nilesh.d.agrawal@gmail.com) · Seattle, WA  
 **LinkedIn:** [linkedin.com/in/nileshdagrawal](https://www.linkedin.com/in/nileshdagrawal/)
+
+---
+
+## What's New in v3
+
+v3 (March 2026) is a significant revision of the paper. The key changes are:
+
+### Three New Contributions (replacing the previous four)
+
+| # | Contribution | Description |
+|---|---|---|
+| 1 | **Message Quality Framework** | Six-dimension definition of notification message quality with empirical grounding. Replaces CTR as the implicit quality proxy. |
+| 2 | **Architectural Attribution** | Explicit disentanglement of the message generation layer from targeting, ranking, and timing. Specifies which gains can be attributed to language quality. |
+| 3 | **Binding-Constraint Framework** | Three-criterion decision framework specifying when LLM generation is — and is not — the binding constraint. Includes a principled argument for *when not to use LLMs at all*. |
+
+### New Code: `server/services/message_quality.py`
+
+The primary new code file in v3. Implements:
+- **`MessageQualityEvaluator`** — Six-dimension quality scorer (contextual relevance, clarity, actionability, novelty handling, linguistic freshness, persuasive appropriateness).
+- **`check_binding_constraint()`** — Three-criterion binding-constraint check. Returns `use_llm=True` only when all three criteria are met.
+
+### Updated: `server/services/pipeline_services.py`
+
+- `route_budget()` now calls `check_binding_constraint()` before routing to the LLM path.
+- `_heuristic_reward_rank()` now uses `MessageQualityEvaluator` (six-dimension composite score) instead of the previous ad-hoc heuristic.
+
+### The Six-Dimension Message Quality Framework (Table 1 in v3)
+
+| Dimension | Template | LLM |
+|---|---|---|
+| Contextual Relevance | Weak — only static slot values | Strong — composes multiple signals naturally |
+| Clarity | Variable — slot grammar often awkward | Flexible — optimizes phrasing for brevity |
+| Actionability | Formulaic call-to-action | Context-sensitive framing of action |
+| Novelty Handling | Poor — novelty reads as irrelevance | Better — bridges from known to adjacent |
+| Linguistic Freshness | Low — same structure across exposures | High — semantic variety across exposures |
+| Persuasive Appropriateness | Neutral — limited expressive range | Variable — requires explicit guardrails |
+
+### The Three-Criterion Binding-Constraint Framework (Section 12 in v3)
+
+All three must be true for LLM generation to be appropriate:
+1. **Framing Variance** — Does content admit multiple plausible, meaningfully different framings?
+2. **Linguistic Sensitivity** — Is user response sensitive to *how* (not just *whether*) relevant?
+3. **Context Richness** — Does the system have sufficient grounded context for non-trivial composition?
 
 ---
 
